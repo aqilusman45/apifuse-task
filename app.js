@@ -3,7 +3,8 @@ var express = require('express');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 
-var indexRouter = require('./routes/index');
+var indexRouter = require('./routes');
+var syncRouter = require('./routes/sync');
 
 var app = express();
 
@@ -12,7 +13,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-app.use('/', indexRouter);
+app.use(indexRouter);
+app.use(syncRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
