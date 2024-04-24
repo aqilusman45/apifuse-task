@@ -1,41 +1,63 @@
 const {
   getSalesForceAccessToken,
-  getSalesforceAccountData,
+  getSaleforceAccounts,
+  createSalesforceAccount,
 } = require("../lib/salesforce");
-const { getCustomer } = require("../lib/quickbooks");
+const { createCustomer, getAllCustomers } = require("../lib/quickbooks");
 
 const syncCustomer = async (req, res, _next) => {
   try {
-    const { identifier, platform } = req.body;
+    const { platform } = req.body;
     const accessToken = await getSalesForceAccessToken();
     if (platform === "salesforce") {
-      // get updated account details from salesforce
-      const accoundData = await getSalesforceAccountData(
-        accessToken,
-        identifier
-      );
-      if (!accoundData) {
+      const { records } = await getSaleforceAccounts(accessToken);
+      if (!records) {
         return res.json({
-          message: "Salesforce customer not found!",
+          message: "Salesforce accounts not found!",
         });
       }
-      // search for the user in quickbooks
-      const { Id } = accoundData;
-      const customer = await getCustomer(Id)
-      if (!customer) {
-        
-      }
-      //if the user is found in quickbooks update it
-      // if the user is not found in quickbooks create a new account
+      const qbCustomers = await Promise.all(
+        records.map(async ({ Name, BillingAddress }) => {
+          const {
+            city = "",
+            country = "",
+            postalCode = "",
+            state = "",
+            street = "",
+          } = BillingAddress ?? {};
+          return await createCustomer({
+            DisplayName: Name,
+            BillAddr: {
+              CountrySubDivisionCode: state,
+              City: city,
+              PostalCode: postalCode,
+              Line1: street,
+              Country: country,
+            },
+          });
+        })
+      );
+      res.json({
+        synced_customers: qbCustomers.filter(Boolean),
+      });
     }
 
     if (platform === "quickbooks") {
-      // search for the user in salesforce
-      res.status(404).json({
-        message: "record not found.",
+      const data = await getAllCustomers();
+      const {
+        QueryResponse: { Customer: customers },
+      } = data;
+      const accounts = await Promise.all(
+        customers.map(async (customer) => {
+          const { DisplayName } = customer;
+          return await createSalesforceAccount(accessToken, {
+            Name: DisplayName,
+          });
+        })
+      );
+      res.json({
+        accounts,
       });
-      // if the user is found in salesforce update it
-      // if the user is not found in salesforce create a new account
     }
   } catch (error) {
     console.log(error);
